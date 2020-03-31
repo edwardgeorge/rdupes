@@ -113,25 +113,23 @@ fn main() -> io::Result<()> {
     let mut table = HashMap::new();
     find_same_sized_files(Path::new(dir), &mut table, rec, min_size, max_depth)?;
     // println!("res: {:?}", results);
-    for (i, (sz, paths)) in table.drain().enumerate() {
-        if paths.len() > 1 {
-            let x = bar::<Blake2b>(&paths)?;
-            for grp in x.iter() {
-                let grplen = grp.len();
-                if i > 0 {
-                    println!("");
-                }
-                println!("\u{250C} {:?} bytes", sz);
-                for (k, p) in grp.iter().enumerate() {
-                    if k < grplen - 1 {
-                        println!("\u{251C} {}", p.display());
-                    } else {
-                        println!("\u{2514} {}", p.display());
-                    }
+    for (i, (sz, paths)) in table.drain().filter(|x| x.1.len() > 1).enumerate() {
+        let x = bar::<Blake2b>(&paths)?;
+        for grp in x.iter() {
+            let grplen = grp.len();
+            if i > 0 {
+                println!("");
+            }
+            println!("\u{250C} {:?} bytes", sz);
+            for (k, p) in grp.iter().enumerate() {
+                if k < grplen - 1 {
+                    println!("\u{251C} {}", p.display());
+                } else {
+                    println!("\u{2514} {}", p.display());
                 }
             }
-            // println!("{:?}", paths);
         }
+        // println!("{:?}", paths);
     }
     println!("Hello, world!");
     Ok(())
