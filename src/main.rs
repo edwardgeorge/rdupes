@@ -1,12 +1,11 @@
 use blake2::Blake2b;
 use clap::{value_t, App, Arg};
 use digest::Digest;
+// use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::{read_dir, File};
 use std::io;
-use std::iter::Map;
 use std::path::{Path, PathBuf};
-use std::slice::Iter;
 use std::vec::Vec;
 
 fn find_same_sized_files(
@@ -44,14 +43,24 @@ fn find_same_sized_files(
     Ok(())
 }
 
+fn baz<D, F, A>(path: &Path, kont: F) -> io::Result<A>
+where
+    D: Digest + io::Write,
+    F: FnOnce(D) -> A,
+{
+    let mut file = File::open(path)?;
+    let mut hasher = D::new();
+    io::copy(&mut file, &mut hasher)?;
+    // let h = hasher.result();
+    Ok(kont(hasher))
+}
+
 fn bar<D: Digest + io::Write>(paths: Vec<PathBuf>) -> io::Result<Vec<Vec<PathBuf>>> {
     let mut matches = HashMap::new();
     let mut paths = paths;
     for i in paths.drain(..) {
         let mut file = File::open(&i)?;
-        let mut hasher = D::new();
-        io::copy(&mut file, &mut hasher)?;
-        let h = hasher.result();
+        let h = baz::<D, _, _>(&i, |h| h.result())?;
         match matches.remove(&h) {
             None => {
                 matches.insert(h, vec![i]);
