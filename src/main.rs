@@ -13,7 +13,7 @@ fn find_same_sized_files(
     table: &mut HashMap<u64, Vec<PathBuf>>,
     recurse: bool,
     min_size: u64,
-    max_depth: i64
+    max_depth: i64,
 ) -> io::Result<()> {
     // let table = HashMap::new();
     for entry in read_dir(dir)? {
@@ -58,7 +58,7 @@ where
 
 fn bar<'a, D>(paths: &'a [PathBuf]) -> io::Result<Vec<Vec<&'a PathBuf>>>
 where
-    D: Digest + io::Write
+    D: Digest + io::Write,
 {
     let mut matches = HashMap::new();
     let paths = paths;
@@ -82,6 +82,34 @@ where
         .collect();
     Ok(r)
 }
+
+
+fn run(dir: &Path, recurse: bool, min_size: u64, max_depth: i64) -> io::Result<()> {
+    let mut table = HashMap::new();
+    find_same_sized_files(dir, &mut table, recurse, min_size, max_depth)?;
+    // println!("res: {:?}", results);
+    for (i, (sz, paths)) in table.drain().filter(|x| x.1.len() > 1).enumerate() {
+        let x = bar::<Blake2b>(&paths)?;
+        for grp in x.iter() {
+            let grplen = grp.len();
+            if i > 0 {
+                println!("");
+            }
+            println!("\u{250C} {:?} bytes", sz);
+            for (k, p) in grp.iter().enumerate() {
+                if k < grplen - 1 {
+                    println!("\u{251C} {}", p.display());
+                } else {
+                    println!("\u{2514} {}", p.display());
+                }
+            }
+        }
+        // println!("{:?}", paths);
+    }
+    println!("Hello, world!");
+    Ok(())
+}
+
 
 fn main() -> io::Result<()> {
     let matches = App::new("rdupes")
@@ -110,27 +138,5 @@ fn main() -> io::Result<()> {
     } else {
         -1
     };
-    let mut table = HashMap::new();
-    find_same_sized_files(Path::new(dir), &mut table, rec, min_size, max_depth)?;
-    // println!("res: {:?}", results);
-    for (i, (sz, paths)) in table.drain().filter(|x| x.1.len() > 1).enumerate() {
-        let x = bar::<Blake2b>(&paths)?;
-        for grp in x.iter() {
-            let grplen = grp.len();
-            if i > 0 {
-                println!("");
-            }
-            println!("\u{250C} {:?} bytes", sz);
-            for (k, p) in grp.iter().enumerate() {
-                if k < grplen - 1 {
-                    println!("\u{251C} {}", p.display());
-                } else {
-                    println!("\u{2514} {}", p.display());
-                }
-            }
-        }
-        // println!("{:?}", paths);
-    }
-    println!("Hello, world!");
-    Ok(())
+    run(Path::new(dir), rec, min_size, max_depth)
 }
