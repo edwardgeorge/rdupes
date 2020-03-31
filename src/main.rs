@@ -13,6 +13,7 @@ fn find_same_sized_files(
     table: &mut HashMap<u64, Vec<PathBuf>>,
     recurse: bool,
     min_size: u64,
+    max_depth: i64
 ) -> io::Result<()> {
     // let table = HashMap::new();
     for entry in read_dir(dir)? {
@@ -21,8 +22,8 @@ fn find_same_sized_files(
         // println!("found: {:?}", path);
         let typ = entry.file_type()?;
         if typ.is_dir() {
-            if recurse {
-                find_same_sized_files(&path, table, recurse, min_size)?;
+            if recurse && max_depth != 0 {
+                find_same_sized_files(&path, table, recurse, min_size, max_depth - 1)?;
             }
         } else if typ.is_file() {
             let metadata = entry.metadata()?;
@@ -83,21 +84,31 @@ fn main() -> io::Result<()> {
     let matches = App::new("rdupes")
         .arg(Arg::with_name("recursive").short("r").takes_value(false))
         .arg(
-            Arg::with_name("min_size")
+            Arg::with_name("min-size")
                 .long("min-size")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("max-depth")
+                .long("max-depth")
                 .takes_value(true),
         )
         .arg(Arg::with_name("directory").required(true))
         .get_matches();
     let dir = matches.value_of_os("directory").unwrap();
     let rec = matches.occurrences_of("recursive") > 0;
-    let min_size = if matches.is_present("min_size") {
-        value_t!(matches.value_of("min_size"), u64).unwrap_or_else(|e| e.exit())
+    let min_size = if matches.is_present("min-size") {
+        value_t!(matches.value_of("min-size"), u64).unwrap_or_else(|e| e.exit())
     } else {
         1
     };
+    let max_depth = if matches.is_present("max-depth") {
+        value_t!(matches.value_of("max-depth"), i64).unwrap_or_else(|e| e.exit())
+    } else {
+        -1
+    };
     let mut table = HashMap::new();
-    find_same_sized_files(Path::new(dir), &mut table, rec, min_size)?;
+    find_same_sized_files(Path::new(dir), &mut table, rec, min_size, max_depth)?;
     // println!("res: {:?}", results);
     for (i, (sz, paths)) in table.drain().enumerate() {
         if paths.len() > 1 {
