@@ -56,10 +56,13 @@ where
     Ok(kont(hasher))
 }
 
-fn bar<D: Digest + io::Write>(paths: Vec<PathBuf>) -> io::Result<Vec<Vec<PathBuf>>> {
+fn bar<'a, D>(paths: &'a [PathBuf]) -> io::Result<Vec<Vec<&'a PathBuf>>>
+where
+    D: Digest + io::Write
+{
     let mut matches = HashMap::new();
-    let mut paths = paths;
-    for i in paths.drain(..) {
+    let paths = paths;
+    for i in paths.iter() {
         let mut file = File::open(&i)?;
         let h = baz::<D, _, _>(&i, |h| h.result())?;
         match matches.remove(&h) {
@@ -112,7 +115,7 @@ fn main() -> io::Result<()> {
     // println!("res: {:?}", results);
     for (i, (sz, paths)) in table.drain().enumerate() {
         if paths.len() > 1 {
-            let x = bar::<Blake2b>(paths)?;
+            let x = bar::<Blake2b>(&paths)?;
             for grp in x.iter() {
                 let grplen = grp.len();
                 if i > 0 {
