@@ -9,13 +9,12 @@ use std::path::{Path, PathBuf};
 use std::slice::Iter;
 use std::vec::Vec;
 
-fn foo(
+fn find_same_sized_files(
     dir: &Path,
-    table: HashMap<u64, Vec<PathBuf>>,
+    table: &mut HashMap<u64, Vec<PathBuf>>,
     recurse: bool,
     min_size: u64,
-) -> io::Result<HashMap<u64, Vec<PathBuf>>> {
-    let mut table = table;
+) -> io::Result<()> {
     // let table = HashMap::new();
     for entry in read_dir(dir)? {
         let entry = entry?;
@@ -24,7 +23,7 @@ fn foo(
         let typ = entry.file_type()?;
         if typ.is_dir() {
             if recurse {
-                table = foo(&path, table, recurse, min_size)?;
+                find_same_sized_files(&path, table, recurse, min_size)?;
             }
         } else if typ.is_file() {
             let metadata = entry.metadata()?;
@@ -42,7 +41,7 @@ fn foo(
             }
         }
     }
-    Ok(table)
+    Ok(())
 }
 
 fn bar<D: Digest + io::Write>(paths: Vec<PathBuf>) -> io::Result<Vec<Vec<PathBuf>>> {
@@ -88,14 +87,25 @@ fn main() -> io::Result<()> {
     } else {
         1
     };
-    let table = HashMap::new();
-    let mut results = foo(Path::new(dir), table, rec, min_size)?;
+    let mut table = HashMap::new();
+    find_same_sized_files(Path::new(dir), &mut table, rec, min_size)?;
     // println!("res: {:?}", results);
-    for (_, paths) in results.drain() {
+    for (i, (sz, paths)) in table.drain().enumerate() {
         if paths.len() > 1 {
             let x = bar::<Blake2b>(paths)?;
-            for i in x.iter() {
-                println!("{:?}", i);
+            for grp in x.iter() {
+                let grplen = grp.len();
+                if i > 0 {
+                    println!("");
+                }
+                println!("\u{250C} {:?} bytes", sz);
+                for (k, p) in grp.iter().enumerate() {
+                    if k < grplen - 1 {
+                        println!("\u{251C} {}", p.display());
+                    } else {
+                        println!("\u{2514} {}", p.display());
+                    }
+                }
             }
             // println!("{:?}", paths);
         }
