@@ -44,7 +44,7 @@ fn find_same_sized_files(
     Ok(())
 }
 
-fn baz<D, F, A>(path: &Path, kont: F) -> io::Result<A>
+fn hash_path<D, F, A>(path: &Path, kont: F) -> io::Result<A>
 where
     D: Digest + io::Write,
     F: FnOnce(D) -> A,
@@ -63,8 +63,7 @@ where
     let mut matches = HashMap::new();
     let paths = paths;
     for i in paths.iter() {
-        let mut file = File::open(&i)?;
-        let h = baz::<D, _, _>(&i, |h| h.result())?;
+        let h = hash_path::<D, _, _>(&i, |h| h.result())?;
         match matches.remove(&h) {
             None => {
                 matches.insert(h, vec![i]);
