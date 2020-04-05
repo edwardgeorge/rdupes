@@ -56,7 +56,7 @@ where
     Ok(kont(hasher))
 }
 
-fn bar<'a, D>(paths: &'a [PathBuf]) -> io::Result<Vec<Vec<&'a PathBuf>>>
+fn find_duplicates<'a, D>(paths: &'a [PathBuf]) -> io::Result<Vec<Vec<&'a PathBuf>>>
 where
     D: Digest + io::Write,
 {
@@ -91,7 +91,7 @@ fn run(dir: &Path, recurse: bool, min_size: u64, max_depth: i64) -> io::Result<(
     find_same_sized_files(dir, &mut table, recurse, min_size, max_depth)?;
     // println!("res: {:?}", results);
     for (i, (sz, paths)) in table.drain().filter(|x| x.1.len() > 1).enumerate() {
-        let x = bar::<Blake2b>(&paths)?;
+        let x = find_duplicates::<Blake2b>(&paths)?;
         for grp in x.iter() {
             let grplen = grp.len();
             if i > 0 {
