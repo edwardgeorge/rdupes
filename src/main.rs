@@ -1,7 +1,7 @@
 use blake2::Blake2b;
 use clap::{value_t, App, Arg};
 use digest::Digest;
-// use rayon::prelude::*;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::{read_dir, File};
 use std::io;
@@ -63,7 +63,7 @@ where
     let mut matches: HashMap<_, Vec<&'a PathBuf>> = HashMap::new();
     let paths = paths;
     let x = paths
-        .iter()
+        .par_iter()
         .map(|i| hash_path::<D, _, _>(i, |h| h.result()).map(|j| (i, j)))
         .collect::<io::Result<Vec<(&PathBuf, _)>>>()?;
     for (i, h) in x.iter() {
