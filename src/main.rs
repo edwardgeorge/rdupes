@@ -60,11 +60,14 @@ fn bar<'a, D>(paths: &'a [PathBuf]) -> io::Result<Vec<Vec<&'a PathBuf>>>
 where
     D: Digest + io::Write,
 {
-    let mut matches = HashMap::new();
+    let mut matches: HashMap<_, Vec<&'a PathBuf>> = HashMap::new();
     let paths = paths;
-    for i in paths.iter() {
-        let h = hash_path::<D, _, _>(&i, |h| h.result())?;
-        match matches.remove(&h) {
+    let x = paths
+        .iter()
+        .map(|i| hash_path::<D, _, _>(i, |h| h.result()).map(|j| (i, j)))
+        .collect::<io::Result<Vec<(&PathBuf, _)>>>()?;
+    for (i, h) in x.iter() {
+        match matches.remove(h) {
             None => {
                 matches.insert(h, vec![i]);
             }
