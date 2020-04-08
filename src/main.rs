@@ -1,5 +1,5 @@
 use blake2::Blake2b;
-use clap::{value_t, App, Arg};
+use clap::{value_t, App, Arg, OsValues};
 use digest::Digest;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -9,36 +9,32 @@ use std::path::{Path, PathBuf};
 use std::vec::Vec;
 
 fn find_same_sized_files(
-    dir: &Path,
+    path: &Path,
     table: &mut HashMap<u64, Vec<PathBuf>>,
     recurse: bool,
     min_size: u64,
     max_depth: i64,
 ) -> io::Result<()> {
     // let table = HashMap::new();
-    for entry in read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        // println!("found: {:?}", path);
-        let typ = entry.file_type()?;
-        if typ.is_dir() {
-            if recurse && max_depth != 0 {
-                find_same_sized_files(&path, table, recurse, min_size, max_depth - 1)?;
-            }
-        } else if typ.is_file() {
-            let metadata = entry.metadata()?;
-            let size = metadata.len();
-            if size >= min_size {
-                match table.remove(&size) {
-                    None => {
-                        table.insert(size, vec![path]);
-                    }
-                    Some(mut x) => {
-                        x.push(path);
-                        table.insert(size, x);
-                    }
-                };
-            }
+    if path.is_dir() && max_depth != 0 {
+        for entry in read_dir(path)? {
+            let entry = entry?;
+            find_same_sized_files(&entry.path(), table, recurse, min_size, max_depth - 1)?;
+        }
+
+    } else if path.is_file() {
+        let metadata = path.metadata()?;
+        let size = metadata.len();
+        if size >= min_size {
+            match table.remove(&size) {
+                None => {
+                    table.insert(size, vec![path.to_path_buf()]);
+                }
+                Some(mut x) => {
+                    x.push(path.to_path_buf());
+                    table.insert(size, x);
+                }
+            };
         }
     }
     Ok(())
@@ -86,9 +82,11 @@ where
 }
 
 
-fn run(dir: &Path, recurse: bool, min_size: u64, max_depth: i64) -> io::Result<()> {
+fn run(dirs: OsValues, recurse: bool, min_size: u64, max_depth: i64) -> io::Result<()> {
     let mut table = HashMap::new();
-    find_same_sized_files(dir, &mut table, recurse, min_size, max_depth)?;
+    for dir in dirs {
+        find_same_sized_files(Path::new(dir), &mut table, recurse, min_size, max_depth)?;
+    }
     // println!("res: {:?}", results);
     for (i, (sz, paths)) in table.drain().filter(|x| x.1.len() > 1).enumerate() {
         let x = find_duplicates::<Blake2b>(&paths)?;
@@ -125,9 +123,9 @@ fn main() -> io::Result<()> {
                 .long("max-depth")
                 .takes_value(true),
         )
-        .arg(Arg::with_name("directory").required(true))
+        .arg(Arg::with_name("directory").required(true).multiple(true))
         .get_matches();
-    let dir = matches.value_of_os("directory").unwrap();
+    let dirs = matches.values_of_os("directory").unwrap();
     let rec = matches.occurrences_of("recursive") > 0;
     let min_size = if matches.is_present("min-size") {
         value_t!(matches.value_of("min-size"), u64).unwrap_or_else(|e| e.exit())
@@ -139,5 +137,5 @@ fn main() -> io::Result<()> {
     } else {
         -1
     };
-    run(Path::new(dir), rec, min_size, max_depth)
+    run(dirs, rec, min_size, max_depth)
 }
