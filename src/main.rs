@@ -15,7 +15,6 @@ fn find_same_sized_files(
     min_size: u64,
     max_depth: i64,
 ) -> io::Result<()> {
-    // let table = HashMap::new();
     if path.is_dir() && max_depth != 0 {
         for entry in read_dir(path)? {
             let entry = entry?;
@@ -48,7 +47,6 @@ where
     let mut file = File::open(path)?;
     let mut hasher = D::new();
     io::copy(&mut file, &mut hasher)?;
-    // let h = hasher.result();
     Ok(kont(hasher))
 }
 
