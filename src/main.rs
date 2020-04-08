@@ -108,7 +108,6 @@ fn run(dir: &Path, recurse: bool, min_size: u64, max_depth: i64) -> io::Result<(
         }
         // println!("{:?}", paths);
     }
-    println!("Hello, world!");
     Ok(())
 }
 
