@@ -79,16 +79,17 @@ where
     Ok(r)
 }
 
-
 fn run(dirs: OsValues, recurse: bool, min_size: u64, max_depth: i64) -> io::Result<()> {
     let mut table = HashMap::new();
     for dir in dirs {
         find_same_sized_files(Path::new(dir), &mut table, recurse, min_size, max_depth)?;
     }
     // println!("res: {:?}", results);
-    for (i, (sz, paths)) in table.drain().filter(|x| x.1.len() > 1).enumerate() {
-        let x = find_duplicates::<Blake2b>(&paths)?;
-        for grp in x.iter() {
+    for (i, x) in table.iter().filter(|x| x.1.len() > 1).map(|(sz, paths)| {
+        find_duplicates::<Blake2b>(paths).map(|d| (sz, d))
+    }).enumerate() {
+        let (sz, paths) = x?;
+        for grp in paths.iter() {
             let grplen = grp.len();
             if i > 0 {
                 println!("");
