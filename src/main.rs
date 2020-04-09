@@ -85,14 +85,17 @@ fn run(dirs: OsValues, recurse: bool, min_size: u64, max_depth: i64) -> io::Resu
         find_same_sized_files(Path::new(dir), &mut table, recurse, min_size, max_depth)?;
     }
     // println!("res: {:?}", results);
-    for (i, x) in table.iter().filter(|x| x.1.len() > 1).map(|(sz, paths)| {
+    let mut first = true;
+    for x in table.iter().filter(|x| x.1.len() > 1).map(|(sz, paths)| {
         find_duplicates::<Blake2b>(paths).map(|d| (sz, d))
-    }).enumerate() {
+    }) {
         let (sz, paths) = x?;
         for grp in paths.iter() {
             let grplen = grp.len();
-            if i > 0 {
+            if ! first {
                 println!("");
+            } else {
+                first = false;
             }
             println!("\u{250C} {:?} bytes", sz);
             for (k, p) in grp.iter().enumerate() {
