@@ -84,30 +84,32 @@ fn run(dirs: OsValues, recurse: bool, min_size: u64, max_depth: i64) -> io::Resu
     for dir in dirs {
         find_same_sized_files(Path::new(dir), &mut table, recurse, min_size, max_depth)?;
     }
-    // println!("res: {:?}", results);
     let mut first = true;
-    for x in table.iter().filter(|x| x.1.len() > 1).map(|(sz, paths)| {
-        find_duplicates::<Blake2b>(paths).map(|d| (sz, d))
-    }) {
-        let (sz, paths) = x?;
-        for grp in paths.iter() {
-            let grplen = grp.len();
-            if ! first {
-                println!("");
-            } else {
-                first = false;
-            }
-            println!("\u{250C} {:?} bytes", sz);
-            for (k, p) in grp.iter().enumerate() {
-                if k < grplen - 1 {
-                    println!("\u{251C} {}", p.display());
-                } else {
-                    println!("\u{2514} {}", p.display());
+    table.par_iter().filter(|(_, x)| x.len() > 1).map(|(sz, paths)| {
+        find_duplicates::<Blake2b>(&paths).map(|d| (sz, d))
+    }).for_each(|x| {
+        match x {
+            Err(_) => (),
+            Ok((sz, paths)) => {
+                for grp in paths.iter() {
+                    let grplen = grp.len();
+                    // if ! first {
+                    println!("");
+                    // } else {
+                    //     first = false;
+                    // }
+                    println!("\u{250C} {:?} bytes", sz);
+                    for (k, p) in grp.iter().enumerate() {
+                        if k < grplen - 1 {
+                            println!("\u{251C} {}", p.display());
+                        } else {
+                            println!("\u{2514} {}", p.display());
+                        }
+                    }
                 }
             }
         }
-        // println!("{:?}", paths);
-    }
+    });
     Ok(())
 }
 
