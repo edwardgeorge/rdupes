@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fs::{read_dir, File};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::vec::Vec;
 
 fn find_same_sized_files(
@@ -80,11 +81,11 @@ where
 }
 
 fn run(dirs: OsValues, recurse: bool, min_size: u64, max_depth: i64) -> io::Result<()> {
+    let first = Mutex::new(true);
     let mut table = HashMap::new();
     for dir in dirs {
         find_same_sized_files(Path::new(dir), &mut table, recurse, min_size, max_depth)?;
     }
-    let mut first = true;
     table.par_iter().filter(|(_, x)| x.len() > 1).map(|(sz, paths)| {
         find_duplicates::<Blake2b>(&paths).map(|d| (sz, d))
     }).for_each(|x| {
@@ -93,11 +94,12 @@ fn run(dirs: OsValues, recurse: bool, min_size: u64, max_depth: i64) -> io::Resu
             Ok((sz, paths)) => {
                 for grp in paths.iter() {
                     let grplen = grp.len();
-                    // if ! first {
-                    println!("");
-                    // } else {
-                    //     first = false;
-                    // }
+                    let mut f = first.lock().unwrap();
+                    if *f {
+                        *f = false;
+                    } else {
+                        println!("");
+                    }
                     println!("\u{250C} {:?} bytes", sz);
                     for (k, p) in grp.iter().enumerate() {
                         if k < grplen - 1 {
