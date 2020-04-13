@@ -90,7 +90,9 @@ fn run(dirs: OsValues, recurse: bool, min_size: u64, max_depth: i64) -> io::Resu
         find_duplicates::<Blake2b>(&paths).map(|d| (sz, d))
     }).for_each(|x| {
         match x {
-            Err(_) => (),
+            Err(e) => {
+                eprintln!("error: {}", e);
+            },
             Ok((sz, paths)) => {
                 for grp in paths.iter() {
                     let grplen = grp.len();
