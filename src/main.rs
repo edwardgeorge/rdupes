@@ -9,23 +9,36 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::vec::Vec;
 
-fn find_same_sized_files(
-    path: &Path,
-    table: &mut HashMap<u64, Vec<PathBuf>>,
+struct Options {
     recurse: bool,
     min_size: u64,
     max_depth: i64,
+}
+
+impl Options {
+    fn decr_depth(&self) -> Options {
+        Options {
+            recurse: self.recurse,
+            min_size: self.min_size,
+            max_depth: self.max_depth - 1,
+        }
+    }
+}
+
+fn find_same_sized_files(
+    path: &Path,
+    table: &mut HashMap<u64, Vec<PathBuf>>,
+    options: &Options,
 ) -> io::Result<()> {
-    if path.is_dir() && max_depth != 0 {
+    if path.is_dir() && options.max_depth != 0 {
         for entry in read_dir(path)? {
             let entry = entry?;
-            find_same_sized_files(&entry.path(), table, recurse, min_size, max_depth - 1)?;
+            find_same_sized_files(&entry.path(), table, &options.decr_depth())?;
         }
-
     } else if path.is_file() {
         let metadata = path.metadata()?;
         let size = metadata.len();
-        if size >= min_size {
+        if size >= options.min_size {
             match table.remove(&size) {
                 None => {
                     table.insert(size, vec![path.to_path_buf()]);
@@ -80,19 +93,20 @@ where
     Ok(r)
 }
 
-fn run(dirs: OsValues, recurse: bool, min_size: u64, max_depth: i64) -> io::Result<()> {
+fn run(dirs: OsValues, options: &Options) -> io::Result<()> {
     let first = Mutex::new(true);
     let mut table = HashMap::new();
     for dir in dirs {
-        find_same_sized_files(Path::new(dir), &mut table, recurse, min_size, max_depth)?;
+        find_same_sized_files(Path::new(dir), &mut table, options)?;
     }
-    table.par_iter().filter(|(_, x)| x.len() > 1).map(|(sz, paths)| {
-        find_duplicates::<Blake2b>(&paths).map(|d| (sz, d))
-    }).for_each(|x| {
-        match x {
+    table
+        .par_iter()
+        .filter(|(_, x)| x.len() > 1)
+        .map(|(sz, paths)| find_duplicates::<Blake2b>(&paths).map(|d| (sz, d)))
+        .for_each(|x| match x {
             Err(e) => {
                 eprintln!("error: {}", e);
-            },
+            }
             Ok((sz, paths)) => {
                 for grp in paths.iter() {
                     let grplen = grp.len();
@@ -112,11 +126,9 @@ fn run(dirs: OsValues, recurse: bool, min_size: u64, max_depth: i64) -> io::Resu
                     }
                 }
             }
-        }
-    });
+        });
     Ok(())
 }
-
 
 fn main() -> io::Result<()> {
     let matches = App::new("rdupes")
@@ -145,5 +157,12 @@ fn main() -> io::Result<()> {
     } else {
         -1
     };
-    run(dirs, rec, min_size, max_depth)
+    run(
+        dirs,
+        &Options {
+            recurse: rec,
+            min_size,
+            max_depth,
+        },
+    )
 }
