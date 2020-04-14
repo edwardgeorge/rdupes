@@ -20,13 +20,7 @@ impl Options {
         if recurse_depth == 0 {
             true
         } else if self.recurse {
-            if self.max_depth == -1 {
-                true
-            } else if recurse_depth <= self.max_depth {
-                true
-            } else {
-                false
-            }
+            self.max_depth == -1 || recurse_depth <= self.max_depth
         } else {
             false
         }
