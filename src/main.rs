@@ -17,16 +17,16 @@ struct Options {
 
 impl Options {
     fn should_recurse(&self, recurse_depth: i64) -> bool {
-        if self.recurse {
-            if recurse_depth <= self.max_depth {
+        if recurse_depth == 0 {
+            true
+        } else if self.recurse {
+            if self.max_depth == -1 {
                 true
-            } else if self.max_depth == -1 {
+            } else if recurse_depth <= self.max_depth {
                 true
             } else {
                 false
             }
-        } else if recurse_depth == 0 {
-            true
         } else {
             false
         }
