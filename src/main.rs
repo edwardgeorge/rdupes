@@ -16,11 +16,19 @@ struct Options {
 }
 
 impl Options {
-    fn decr_depth(&self) -> Options {
-        Options {
-            recurse: self.recurse,
-            min_size: self.min_size,
-            max_depth: self.max_depth - 1,
+    fn should_recurse(&self, recurse_depth: i64) -> bool {
+        if self.recurse {
+            if recurse_depth <= self.max_depth {
+                true
+            } else if self.max_depth == -1 {
+                true
+            } else {
+                false
+            }
+        } else if recurse_depth == 0 {
+            true
+        } else {
+            false
         }
     }
 }
@@ -29,11 +37,12 @@ fn find_same_sized_files(
     path: &Path,
     table: &mut HashMap<u64, Vec<PathBuf>>,
     options: &Options,
+    recurse_depth: i64,
 ) -> io::Result<()> {
-    if path.is_dir() && options.max_depth != 0 {
+    if path.is_dir() && options.should_recurse(recurse_depth) {
         for entry in read_dir(path)? {
             let entry = entry?;
-            find_same_sized_files(&entry.path(), table, &options.decr_depth())?;
+            find_same_sized_files(&entry.path(), table, options, recurse_depth + 1)?;
         }
     } else if path.is_file() {
         let metadata = path.metadata()?;
@@ -97,12 +106,11 @@ fn run(dirs: OsValues, options: &Options) -> io::Result<()> {
     let first = Mutex::new(true);
     let mut table = HashMap::new();
     for dir in dirs {
-        find_same_sized_files(Path::new(dir), &mut table, options)?;
+        find_same_sized_files(Path::new(dir), &mut table, options, 0)?;
     }
     let mut keys: Vec<_> = table.keys().collect();
     keys.sort();
-    keys
-        .par_iter()
+    keys.par_iter()
         .map(|sz| (sz, table.get(sz).unwrap()))
         .filter(|(_, x)| x.len() > 1)
         .map(|(sz, paths)| find_duplicates::<Blake2b>(&paths).map(|d| (sz, d)))
