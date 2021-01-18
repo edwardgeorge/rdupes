@@ -27,6 +27,16 @@ impl Options {
     }
 }
 
+fn filename_sort_key<'a>(
+    inp: &&'a PathBuf,
+) -> (
+    Option<&'a Path>,
+    Option<&'a std::ffi::OsStr>,
+    Option<&'a std::ffi::OsStr>,
+) {
+    (inp.parent(), inp.file_stem(), inp.extension())
+}
+
 fn find_same_sized_files(
     path: &Path,
     table: &mut HashMap<u64, Vec<PathBuf>>,
@@ -84,6 +94,8 @@ where
             }
             Some(mut x) => {
                 x.push(i);
+                //x.sort_by_key(|v| (v.parent(), v.file_stem(), v.extension()));
+                x.sort_by_key(filename_sort_key);
                 matches.insert(h, x);
             }
         };
