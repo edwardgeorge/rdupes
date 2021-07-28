@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use std::fs::{read_dir, File};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::vec::Vec;
 
 struct Options {
@@ -109,7 +110,7 @@ where
 }
 
 fn run(dirs: OsValues, options: &Options) -> io::Result<()> {
-    let first = Mutex::new(true);
+    let first = Arc::new(AtomicBool::new(true));
     let mut table = HashMap::new();
     for dir in dirs {
         find_same_sized_files(Path::new(dir), &mut table, options, 0)?;
@@ -127,11 +128,10 @@ fn run(dirs: OsValues, options: &Options) -> io::Result<()> {
             Ok((sz, paths)) => {
                 for grp in paths.iter() {
                     let grplen = grp.len();
-                    let mut f = first.lock().unwrap();
-                    if *f {
-                        *f = false;
+                    if first.load(Ordering::SeqCst) {
+                        first.store(false, Ordering::SeqCst);
                     } else {
-                        println!("");
+                        println!();
                     }
                     println!("\u{250C} {:?} bytes", sz);
                     for (k, p) in grp.iter().enumerate() {
