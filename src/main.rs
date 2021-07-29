@@ -119,15 +119,16 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
             .map(|d| d.map(|e| (e.depth(), e.into_path())).map_err(Error::from));
         find_same_sized_files(i, &mut table, options)?;
     }
-    table
-        .par_iter()
-        .filter(|(_, x)| x.len() > 1)
-        .map(|(sz, paths)| find_duplicates::<Blake2b>(&paths).map(|d| (sz, d)))
-        .for_each(|x| match x {
+    table.par_drain().for_each(|(sz, paths)| {
+        if paths.len() < 2 {
+            return;
+        }
+        let x = find_duplicates::<Blake2b>(&paths);
+        match x {
             Err(e) => {
                 eprintln!("error: {}", e);
             }
-            Ok((sz, mut paths)) => {
+            Ok(mut paths) => {
                 let stdout = std::io::stdout();
                 for grp in paths.iter_mut() {
                     grp.sort_unstable_by(|l, r| options.sort_options.cmp_for_fileinfos(l, r));
@@ -148,7 +149,8 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
                     }
                 }
             }
-        });
+        }
+    });
     Ok(())
 }
 
