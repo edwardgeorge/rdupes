@@ -119,10 +119,8 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
             .map(|d| d.map(|e| (e.depth(), e.into_path())).map_err(Error::from));
         find_same_sized_files(i, &mut table, options)?;
     }
-    let mut keys: Vec<_> = table.keys().collect();
-    keys.sort();
-    keys.par_iter()
-        .map(|sz| (sz, table.get(sz).unwrap()))
+    table
+        .par_iter()
         .filter(|(_, x)| x.len() > 1)
         .map(|(sz, paths)| find_duplicates::<Blake2b>(&paths).map(|d| (sz, d)))
         .for_each(|x| match x {
