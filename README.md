@@ -21,6 +21,11 @@ $ rdupes --max-depth 3 --sort-by depth -r /Users/myuser/Downloads
 ┌ 10784439 bytes
 ├ /Users/myuser/Downloads/kustomize_v3.10.0_darwin_amd64.tar.gz
 └ /Users/myuser/Downloads/kustomize_v3.10.0_darwin_amd64 (1).tar.gz
+
+...
+
+57106 regular files seen (of 69586 files total), 895 skipped by min-size (1B). 
+50233 total candidate files hashed, 21531 duplicates over 7168 groups. 429186948 wasted bytes.
 ```
 
 A first pass finds files with identical sizes and then a second pass finds duplicates within those groups using the blake2b hasher.
