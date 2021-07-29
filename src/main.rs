@@ -194,13 +194,13 @@ fn main() {
             Arg::with_name("max-depth")
                 .long("max-depth")
                 .takes_value(true)
-                .help("maximum depth to recurse (0 is no recursion). requires -r flag.")
-                .requires("recursive"),
+                .help("maximum depth to recurse (0 is no recursion). implies -r."),
         )
         .arg(Arg::with_name("directory").required(true).multiple(true))
         .get_matches();
     let dirs = matches.values_of_os("directory").unwrap();
-    let recurse = matches.occurrences_of("recursive") > 0;
+    let recurse =
+        matches.occurrences_of("recursive") > 0 || matches.occurrences_of("max-depth") > 0;
     let follow_symlinks = matches.occurrences_of("follow") > 0;
     let min_size = if matches.is_present("min-size") {
         value_t!(matches.value_of("min-size"), u64).unwrap_or_else(|e| e.exit())
