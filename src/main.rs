@@ -4,7 +4,7 @@ use digest::Digest;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -77,7 +77,7 @@ where
 
 fn hash_path<D, F, A>(path: &Path, kont: F) -> io::Result<A>
 where
-    D: Digest + io::Write,
+    D: Digest + Write,
     F: FnOnce(D) -> A,
 {
     let mut file = File::open(path)?;
@@ -88,7 +88,7 @@ where
 
 fn find_duplicates<'a, D>(paths: &'a [PathBuf]) -> Result<Vec<Vec<&'a PathBuf>>, Error>
 where
-    D: Digest + io::Write,
+    D: Digest + Write,
 {
     let mut matches: HashMap<_, Vec<&'a PathBuf>> = HashMap::new();
     let x = paths
@@ -145,19 +145,21 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
                 eprintln!("error: {}", e);
             }
             Ok((sz, paths)) => {
+                let stdout = std::io::stdout();
                 for grp in paths.iter() {
                     let grplen = grp.len();
+                    let mut out = stdout.lock();
                     if first.load(Ordering::SeqCst) {
                         first.store(false, Ordering::SeqCst);
                     } else {
-                        println!();
+                        let _ = writeln!(out);
                     }
-                    println!("\u{250C} {:?} bytes", sz);
+                    let _ = writeln!(out, "\u{250C} {:?} bytes", sz);
                     for (k, p) in grp.iter().enumerate() {
                         if k < grplen - 1 {
-                            println!("\u{251C} {}", p.display());
+                            let _ = writeln!(out, "\u{251C} {}", p.display());
                         } else {
-                            println!("\u{2514} {}", p.display());
+                            let _ = writeln!(out, "\u{2514} {}", p.display());
                         }
                     }
                 }
