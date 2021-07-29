@@ -33,6 +33,7 @@ impl From<walkdir::Error> for Error {
 
 struct Options {
     recurse: bool,
+    follow_symlinks: bool,
     min_size: u64,
     max_depth: Option<u64>,
 }
@@ -125,6 +126,9 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
         if let Some(d) = depth {
             iter = iter.max_depth(d as usize + 1);
         }
+        if options.follow_symlinks {
+            iter = iter.follow_links(true);
+        }
         let i = iter
             .into_iter()
             .map(|d| d.map(|e| (e.depth(), e.into_path())).map_err(Error::from));
@@ -175,6 +179,12 @@ fn main() {
                 .help("recurse into directories"),
         )
         .arg(
+            Arg::with_name("follow")
+                .short("f")
+                .takes_value(false)
+                .help("follow symlinks"),
+        )
+        .arg(
             Arg::with_name("min-size")
                 .long("min-size")
                 .takes_value(true)
@@ -191,6 +201,7 @@ fn main() {
         .get_matches();
     let dirs = matches.values_of_os("directory").unwrap();
     let recurse = matches.occurrences_of("recursive") > 0;
+    let follow_symlinks = matches.occurrences_of("follow") > 0;
     let min_size = if matches.is_present("min-size") {
         value_t!(matches.value_of("min-size"), u64).unwrap_or_else(|e| e.exit())
     } else {
@@ -205,6 +216,7 @@ fn main() {
         dirs,
         &Options {
             recurse,
+            follow_symlinks,
             min_size,
             max_depth,
         },
