@@ -83,7 +83,6 @@ where
     D: Digest + io::Write,
 {
     let mut matches: HashMap<_, Vec<&'a PathBuf>> = HashMap::new();
-    let paths = paths;
     let x = paths
         .par_iter()
         .map(|i| hash_path::<D, _, _>(i, |h| h.result()).map(|j| (i, j)))
