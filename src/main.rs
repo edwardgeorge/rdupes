@@ -3,29 +3,37 @@ use clap::{value_t, App, Arg, OsValues};
 use digest::Digest;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::fs::{read_dir, File};
+use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::vec::Vec;
 
+#[derive(Debug, thiserror::Error)]
+enum Error {
+    #[error("Cycle in links detected at: {0}")]
+    RecursiveLinks(PathBuf),
+    #[error("{0}")]
+    IOError(#[from] std::io::Error),
+}
+
+impl From<walkdir::Error> for Error {
+    fn from(err: walkdir::Error) -> Self {
+        if let Some(path) = err.loop_ancestor() {
+            Error::RecursiveLinks(path.to_owned())
+        } else if let Some(error) = err.into_io_error() {
+            Error::IOError(error)
+        } else {
+            panic!("walkdir return unknown error")
+        }
+    }
+}
+
 struct Options {
     recurse: bool,
     min_size: u64,
-    max_depth: i64,
-}
-
-impl Options {
-    fn should_recurse(&self, recurse_depth: i64) -> bool {
-        if recurse_depth == 0 {
-            true
-        } else if self.recurse {
-            self.max_depth == -1 || recurse_depth <= self.max_depth
-        } else {
-            false
-        }
-    }
+    max_depth: Option<u64>,
 }
 
 fn filename_sort_key<'a>(
@@ -38,30 +46,30 @@ fn filename_sort_key<'a>(
     (inp.parent(), inp.file_stem(), inp.extension())
 }
 
-fn find_same_sized_files(
-    path: &Path,
+fn find_same_sized_files<I>(
+    paths: I,
     table: &mut HashMap<u64, Vec<PathBuf>>,
     options: &Options,
-    recurse_depth: i64,
-) -> io::Result<()> {
-    if path.is_dir() && options.should_recurse(recurse_depth) {
-        for entry in read_dir(path)? {
-            let entry = entry?;
-            find_same_sized_files(&entry.path(), table, options, recurse_depth + 1)?;
-        }
-    } else if path.is_file() {
-        let metadata = path.metadata()?;
-        let size = metadata.len();
-        if size >= options.min_size {
-            match table.remove(&size) {
-                None => {
-                    table.insert(size, vec![path.to_path_buf()]);
-                }
-                Some(mut x) => {
-                    x.push(path.to_path_buf());
-                    table.insert(size, x);
-                }
-            };
+) -> Result<(), Error>
+where
+    I: Iterator<Item = Result<(usize, PathBuf), Error>>,
+{
+    for item in paths {
+        let (_depth, path) = item?;
+        if path.is_file() {
+            let metadata = path.metadata()?;
+            let size = metadata.len();
+            if size >= options.min_size {
+                match table.remove(&size) {
+                    None => {
+                        table.insert(size, vec![path.to_path_buf()]);
+                    }
+                    Some(mut x) => {
+                        x.push(path.to_path_buf());
+                        table.insert(size, x);
+                    }
+                };
+            }
         }
     }
     Ok(())
@@ -78,7 +86,7 @@ where
     Ok(kont(hasher))
 }
 
-fn find_duplicates<'a, D>(paths: &'a [PathBuf]) -> io::Result<Vec<Vec<&'a PathBuf>>>
+fn find_duplicates<'a, D>(paths: &'a [PathBuf]) -> Result<Vec<Vec<&'a PathBuf>>, Error>
 where
     D: Digest + io::Write,
 {
@@ -108,11 +116,23 @@ where
     Ok(r)
 }
 
-fn run(dirs: OsValues, options: &Options) -> io::Result<()> {
+fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
     let first = Arc::new(AtomicBool::new(true));
+    let depth = if options.recurse {
+        options.max_depth
+    } else {
+        Some(0)
+    };
     let mut table = HashMap::new();
     for dir in dirs {
-        find_same_sized_files(Path::new(dir), &mut table, options, 0)?;
+        let mut iter = walkdir::WalkDir::new(dir);
+        if let Some(d) = depth {
+            iter = iter.max_depth(d as usize + 1);
+        }
+        let i = iter
+            .into_iter()
+            .map(|d| d.map(|e| (e.depth(), e.into_path())).map_err(Error::from));
+        find_same_sized_files(i, &mut table, options)?;
     }
     let mut keys: Vec<_> = table.keys().collect();
     keys.sort();
@@ -146,7 +166,7 @@ fn run(dirs: OsValues, options: &Options) -> io::Result<()> {
     Ok(())
 }
 
-fn main() -> io::Result<()> {
+fn main() {
     let matches = App::new("rdupes")
         .version(env!("CARGO_PKG_VERSION"))
         .arg(
@@ -178,16 +198,20 @@ fn main() -> io::Result<()> {
         1
     };
     let max_depth = if matches.is_present("max-depth") {
-        value_t!(matches.value_of("max-depth"), i64).unwrap_or_else(|e| e.exit())
+        Some(value_t!(matches.value_of("max-depth"), u64).unwrap_or_else(|e| e.exit()))
     } else {
-        -1
+        None
     };
-    run(
+    let result = run(
         dirs,
         &Options {
             recurse,
             min_size,
             max_depth,
         },
-    )
+    );
+    if let Err(e) = result {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
 }
