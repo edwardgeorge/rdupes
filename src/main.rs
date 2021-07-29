@@ -148,16 +148,24 @@ fn run(dirs: OsValues, options: &Options) -> io::Result<()> {
 
 fn main() -> io::Result<()> {
     let matches = App::new("rdupes")
-        .arg(Arg::with_name("recursive").short("r").takes_value(false))
+        .arg(
+            Arg::with_name("recursive")
+                .short("r")
+                .takes_value(false)
+                .help("recurse into directories"),
+        )
         .arg(
             Arg::with_name("min-size")
                 .long("min-size")
-                .takes_value(true),
+                .takes_value(true)
+                .help("minimum size of files to find duplicates for"),
         )
         .arg(
             Arg::with_name("max-depth")
                 .long("max-depth")
-                .takes_value(true),
+                .takes_value(true)
+                .help("maximum depth to recurse (0 is no recursion). requires -r flag.")
+                .requires("recursive"),
         )
         .arg(Arg::with_name("directory").required(true).multiple(true))
         .get_matches();
