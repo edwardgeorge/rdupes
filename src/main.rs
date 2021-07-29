@@ -163,7 +163,7 @@ fn main() -> io::Result<()> {
         .arg(Arg::with_name("directory").required(true).multiple(true))
         .get_matches();
     let dirs = matches.values_of_os("directory").unwrap();
-    let rec = matches.occurrences_of("recursive") > 0;
+    let recurse = matches.occurrences_of("recursive") > 0;
     let min_size = if matches.is_present("min-size") {
         value_t!(matches.value_of("min-size"), u64).unwrap_or_else(|e| e.exit())
     } else {
@@ -177,7 +177,7 @@ fn main() -> io::Result<()> {
     run(
         dirs,
         &Options {
-            recurse: rec,
+            recurse,
             min_size,
             max_depth,
         },
