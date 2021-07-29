@@ -1,6 +1,7 @@
 use blake2::Blake2b;
 use clap::{value_t, App, Arg, OsValues};
 use digest::Digest;
+use generic_array::{ArrayLength, GenericArray};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
@@ -75,38 +76,33 @@ where
     Ok(())
 }
 
-fn hash_path<D, F, A>(path: &Path, kont: F) -> io::Result<A>
+fn hash_path<D, N>(path: &Path) -> io::Result<GenericArray<u8, N>>
 where
-    D: Digest + Write,
-    F: FnOnce(D) -> A,
+    D: Digest<OutputSize = N> + Write,
+    N: ArrayLength<u8>,
 {
     let mut file = File::open(path)?;
     let mut hasher = D::new();
     io::copy(&mut file, &mut hasher)?;
-    Ok(kont(hasher))
+    //let x: Vec<u8> = Vec::from(&hasher.finalize()[..]);
+    Ok(hasher.finalize())
 }
 
-fn find_duplicates<'a, D>(paths: &'a [PathBuf]) -> Result<Vec<Vec<&'a PathBuf>>, Error>
+fn find_duplicates<D>(paths: &[PathBuf]) -> Result<Vec<Vec<&PathBuf>>, Error>
 where
     D: Digest + Write,
 {
-    let mut matches: HashMap<_, Vec<&'a PathBuf>> = HashMap::new();
-    let x = paths
+    let mut matches: HashMap<_, Vec<&PathBuf>> = HashMap::new();
+    let mut hashes: Vec<_> = paths
         .par_iter()
-        .map(|i| hash_path::<D, _, _>(i, |h| h.result()).map(|j| (i, j)))
-        .collect::<io::Result<Vec<(&PathBuf, _)>>>()?;
-    for (i, h) in x.iter() {
-        match matches.remove(h) {
-            None => {
-                matches.insert(h, vec![i]);
-            }
-            Some(mut x) => {
-                x.push(i);
-                //x.sort_by_key(|v| (v.parent(), v.file_stem(), v.extension()));
-                x.sort_by_key(filename_sort_key);
-                matches.insert(h, x);
-            }
-        };
+        .map(|i| hash_path::<D, _>(i).map(|h| (h, i)))
+        .collect::<Result<_, _>>()?;
+    for (h, p) in hashes.drain(..) {
+        if let Some(existing) = matches.get_mut(&h) {
+            existing.push(p);
+        } else {
+            matches.insert(h, vec![p]);
+        }
     }
     let r = matches
         .drain()
@@ -144,9 +140,10 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
             Err(e) => {
                 eprintln!("error: {}", e);
             }
-            Ok((sz, paths)) => {
+            Ok((sz, mut paths)) => {
                 let stdout = std::io::stdout();
-                for grp in paths.iter() {
+                for grp in paths.iter_mut() {
+                    grp.sort_by_key(filename_sort_key);
                     let grplen = grp.len();
                     let mut out = stdout.lock();
                     if first.load(Ordering::SeqCst) {
