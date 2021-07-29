@@ -11,64 +11,49 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::vec::Vec;
 
-#[derive(Debug, thiserror::Error)]
-enum Error {
-    #[error("Cycle in links detected at: {0}")]
-    RecursiveLinks(PathBuf),
-    #[error("{0}")]
-    IOError(#[from] std::io::Error),
-}
+mod sorting;
+mod types;
 
-impl From<walkdir::Error> for Error {
-    fn from(err: walkdir::Error) -> Self {
-        if let Some(path) = err.loop_ancestor() {
-            Error::RecursiveLinks(path.to_owned())
-        } else if let Some(error) = err.into_io_error() {
-            Error::IOError(error)
-        } else {
-            panic!("walkdir return unknown error")
-        }
-    }
-}
+use sorting::{SortKeys, SortOptions};
+use types::{Error, FileInfo};
 
+#[derive(Debug, Clone)]
 struct Options {
     recurse: bool,
     follow_symlinks: bool,
     min_size: u64,
     max_depth: Option<u64>,
-}
-
-fn filename_sort_key<'a>(
-    inp: &&'a PathBuf,
-) -> (
-    Option<&'a Path>,
-    Option<&'a std::ffi::OsStr>,
-    Option<&'a std::ffi::OsStr>,
-) {
-    (inp.parent(), inp.file_stem(), inp.extension())
+    sort_options: SortOptions,
 }
 
 fn find_same_sized_files<I>(
     paths: I,
-    table: &mut HashMap<u64, Vec<PathBuf>>,
+    table: &mut HashMap<u64, Vec<FileInfo>>,
     options: &Options,
 ) -> Result<(), Error>
 where
     I: Iterator<Item = Result<(usize, PathBuf), Error>>,
 {
     for item in paths {
-        let (_depth, path) = item?;
+        let (depth, path) = item?;
         if path.is_file() {
             let metadata = path.metadata()?;
             let size = metadata.len();
             if size >= options.min_size {
-                match table.remove(&size) {
+                let f = FileInfo {
+                    depth,
+                    mtime: metadata.modified().ok(),
+                    path,
+                };
+                match table.get_mut(&size) {
                     None => {
-                        table.insert(size, vec![path.to_path_buf()]);
+                        //table.insert(size, vec![path.to_path_buf()]);
+                        table.insert(size, vec![f]);
                     }
-                    Some(mut x) => {
-                        x.push(path.to_path_buf());
-                        table.insert(size, x);
+                    Some(x) => {
+                        x.push(f)
+                        //x.push(path.to_path_buf());
+                        //table.insert(size, x);
                     }
                 };
             }
@@ -89,11 +74,11 @@ where
     Ok(hasher.finalize())
 }
 
-fn find_duplicates<D>(paths: &[PathBuf]) -> Result<Vec<Vec<&PathBuf>>, Error>
+fn find_duplicates<D>(paths: &[FileInfo]) -> Result<Vec<Vec<&FileInfo>>, Error>
 where
     D: Digest + Write,
 {
-    let mut matches: HashMap<_, Vec<&PathBuf>> = HashMap::new();
+    let mut matches: HashMap<_, Vec<&FileInfo>> = HashMap::new();
     let mut hashes: Vec<_> = paths
         .par_iter()
         .map(|i| hash_path::<D, _>(i).map(|h| (h, i)))
@@ -147,7 +132,7 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
             Ok((sz, mut paths)) => {
                 let stdout = std::io::stdout();
                 for grp in paths.iter_mut() {
-                    grp.sort_by_key(filename_sort_key);
+                    grp.sort_unstable_by(|l, r| options.sort_options.cmp_for_fileinfos(l, r));
                     let grplen = grp.len();
                     let mut out = stdout.lock();
                     if first.load(Ordering::SeqCst) {
@@ -196,12 +181,23 @@ fn main() {
                 .takes_value(true)
                 .help("maximum depth to recurse (0 is no recursion). implies -r."),
         )
+        .arg(
+            Arg::with_name("sort-opts")
+                .long("sort-by")
+                .takes_value(true)
+                .help("properties to sort by, comma-separated. depth,mtime,path"),
+        )
+        .arg(
+            Arg::with_name("prefer-within")
+                .long("prefer-within")
+                .takes_value(true)
+                .help("prefer files within this path"),
+        )
         .arg(Arg::with_name("directory").required(true).multiple(true))
         .get_matches();
     let dirs = matches.values_of_os("directory").unwrap();
-    let recurse =
-        matches.occurrences_of("recursive") > 0 || matches.occurrences_of("max-depth") > 0;
-    let follow_symlinks = matches.occurrences_of("follow") > 0;
+    let recurse = matches.is_present("recursive") || matches.is_present("max-depth");
+    let follow_symlinks = matches.is_present("follow");
     let min_size = if matches.is_present("min-size") {
         value_t!(matches.value_of("min-size"), u64).unwrap_or_else(|e| e.exit())
     } else {
@@ -212,6 +208,21 @@ fn main() {
     } else {
         None
     };
+    let prefer_location = if matches.is_present("prefer-within") {
+        let p = value_t!(matches, "prefer-within", PathBuf).unwrap_or_else(|e| e.exit());
+        Some(p.canonicalize().expect("could not canonicalize path"))
+    } else {
+        None
+    };
+    let sort_by = if matches.is_present("sort-opts") {
+        value_t!(matches, "sort-opts", SortKeys).unwrap_or_else(|e| e.exit())
+    } else {
+        SortKeys::default()
+    };
+    let sort_options = SortOptions {
+        prefer_location,
+        sort_by,
+    };
     let result = run(
         dirs,
         &Options {
@@ -219,6 +230,7 @@ fn main() {
             follow_symlinks,
             min_size,
             max_depth,
+            sort_options,
         },
     );
     if let Err(e) = result {
