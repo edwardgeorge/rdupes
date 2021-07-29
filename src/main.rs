@@ -148,6 +148,7 @@ fn run(dirs: OsValues, options: &Options) -> io::Result<()> {
 
 fn main() -> io::Result<()> {
     let matches = App::new("rdupes")
+        .version(env!("CARGO_PKG_VERSION"))
         .arg(
             Arg::with_name("recursive")
                 .short("r")
