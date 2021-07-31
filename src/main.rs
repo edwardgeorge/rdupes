@@ -183,7 +183,7 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
         num_groups.load(Ordering::SeqCst),
         total_sz.load(Ordering::SeqCst),
     );
-    println!("{} {}", summary1, summary2);
+    println!("{}\n{}", summary1, summary2);
     Ok(())
 }
 
