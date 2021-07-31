@@ -59,7 +59,7 @@ impl SortKeys {
             return None;
         }
         if keys.len() < def.len() {
-            keys.extend(def.drain(..).filter(|k| !uniq.contains(&k)));
+            keys.extend(def.drain(..).filter(|k| !uniq.contains(k)));
         }
         Some(SortKeys { keys })
     }
@@ -119,8 +119,8 @@ impl SortOptions {
     #[inline]
     pub fn cmp_for_fileinfos(&self, left: &FileInfo, right: &FileInfo) -> Ordering {
         if let Some(path) = &self.prefer_location {
-            let l = is_within_dir(&left.path, &path);
-            let r = is_within_dir(&right.path, &path);
+            let l = is_within_dir(&left.path, path);
+            let r = is_within_dir(&right.path, path);
             match (l, r) {
                 (false, true) => return Ordering::Greater,
                 (true, false) => return Ordering::Less,

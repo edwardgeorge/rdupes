@@ -33,7 +33,7 @@ pub enum Error {
     #[error("Cycle in links detected at: {0}")]
     RecursiveLinks(PathBuf),
     #[error("{0}")]
-    IOError(#[from] std::io::Error),
+    IO(#[from] std::io::Error),
     #[error("Invalid sort key: {0}")]
     InvalidSortKey(String),
     #[error("Duplicate sort keys provided")]
@@ -45,7 +45,7 @@ impl From<walkdir::Error> for Error {
         if let Some(path) = err.loop_ancestor() {
             Error::RecursiveLinks(path.to_owned())
         } else if let Some(error) = err.into_io_error() {
-            Error::IOError(error)
+            Error::IO(error)
         } else {
             panic!("walkdir return unknown error")
         }
