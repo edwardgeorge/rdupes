@@ -114,6 +114,7 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
     let num_hashes = Arc::new(AtomicUsize::new(0));
     let num_duplicates = Arc::new(AtomicUsize::new(0));
     let num_groups = Arc::new(AtomicUsize::new(0));
+    let num_errors = Arc::new(AtomicUsize::new(0));
     let total_sz = Arc::new(AtomicU64::new(0));
     let depth = if options.recurse {
         options.max_depth
@@ -149,7 +150,8 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
         num_hashes.fetch_add(hash_count, Ordering::Relaxed);
         match x {
             Err(e) => {
-                eprintln!("error: {}", e);
+                eprintln!("error attempting to hash file from {}B group: {}", sz, e);
+                num_errors.fetch_add(1, Ordering::Relaxed);
             }
             Ok(mut paths) => {
                 num_groups.fetch_add(paths.len(), Ordering::Relaxed);
@@ -177,8 +179,9 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
         files_counter, seen_counter, skipped_counter, options.min_size
     );
     let summary2 = format!(
-        "{} total candidate files hashed, {} duplicates over {} groups. {} wasted bytes.",
+        "{} total candidate files hashed, {} errors. {} duplicates over {} groups. {} wasted bytes.",
         num_hashes.load(Ordering::SeqCst),
+        num_errors.load(Ordering::SeqCst),
         num_duplicates.load(Ordering::SeqCst),
         num_groups.load(Ordering::SeqCst),
         total_sz.load(Ordering::SeqCst),
