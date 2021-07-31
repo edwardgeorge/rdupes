@@ -130,3 +130,18 @@ impl SortOptions {
         self.sort_by.cmp_for_fileinfos(left, right)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::is_within_dir;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_is_within_dir() {
+        let trailing = PathBuf::from("/Users/myuser/Documents/");
+        let notrail = PathBuf::from("/Users/myuser/Documents");
+        let file = PathBuf::from("/Users/myuser/Documents/PDFs/Draft.pdf");
+        assert!(is_within_dir(&file, &trailing));
+        assert!(is_within_dir(&file, &notrail));
+    }
+}
