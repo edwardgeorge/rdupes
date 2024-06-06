@@ -209,7 +209,7 @@ fn main() {
             Arg::with_name("min-size")
                 .long("min-size")
                 .takes_value(true)
-                .help("minimum size of files to find duplicates for"),
+                .help("minimum size of files (in bytes) to find duplicates for"),
         )
         .arg(
             Arg::with_name("max-depth")
