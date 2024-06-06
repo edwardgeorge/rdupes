@@ -1,12 +1,15 @@
 use blake2::Blake2b;
-use clap::{value_t, App, Arg, OsValues};
+//use clap::{value_t, App, Arg, OsValues};
+use clap::{arg, command, value_parser, Arg};
 use digest::Digest;
 use generic_array::{ArrayLength, GenericArray};
 use rayon::prelude::*;
 use std::collections::HashMap;
+
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::vec::Vec;
@@ -110,7 +113,11 @@ where
     Ok(r)
 }
 
-fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
+fn run<I, J>(dirs: I, options: &Options) -> Result<(), Error>
+    where
+        I: IntoIterator<Item = J>,
+        J: AsRef<Path>,
+{
     let num_hashes = Arc::new(AtomicUsize::new(0));
     let num_duplicates = Arc::new(AtomicUsize::new(0));
     let num_groups = Arc::new(AtomicUsize::new(0));
@@ -191,70 +198,68 @@ fn run(dirs: OsValues, options: &Options) -> Result<(), Error> {
 }
 
 fn main() {
-    let matches = App::new("rdupes")
-        .version(env!("CARGO_PKG_VERSION"))
+    let matches = command!()
         .arg(
-            Arg::with_name("recursive")
-                .short("r")
-                .takes_value(false)
-                .help("recurse into directories"),
+            arg!(recursive: -r "recurse into directories")
+            //.action(ArgAction::SetTrue)
+            // Arg::new("recursive")
+            //     .short('r')
+            //     .action(ArgAction::SetTrue)
+            //     .help("recurse into directories"),
         )
         .arg(
-            Arg::with_name("follow")
-                .short("f")
-                .takes_value(false)
-                .help("follow symlinks"),
+            arg!(follow: -f --follow "follow symlinks")
+            //.action(ArgAction::SetTrue)
+            // Arg::new("follow")
+            //     .short('f')
+            //     .action(ArgAction::SetTrue)
+            //     .help("follow symlinks"),
         )
         .arg(
-            Arg::with_name("min-size")
-                .long("min-size")
-                .takes_value(true)
-                .help("minimum size of files (in bytes) to find duplicates for"),
+            arg!(--"min-size" <BYTES> "minimum size of files (in bytes) to find duplicates for")
+            .value_parser(value_parser!(u64))
+            // Arg::new("min-size")
+            //     .long("min-size")
+            //     .num_args(1)
+            //     .help("minimum size of files (in bytes) to find duplicates for"),
         )
         .arg(
-            Arg::with_name("max-depth")
-                .long("max-depth")
-                .takes_value(true)
-                .help("maximum depth to recurse (0 is no recursion). implies -r."),
+            arg!(--"max-depth" <DEPTH> "maximum depth to recurse (0 is no recursion). implies -r.")
+            .value_parser(value_parser!(u64))
+            // Arg::new("max-depth")
+            //     .long("max-depth")
+            //     .num_args(1)
+            //     .help("maximum depth to recurse (0 is no recursion). implies -r."),
         )
         .arg(
-            Arg::with_name("sort-opts")
-                .long("sort-by")
-                .takes_value(true)
-                .help("properties to sort by, comma-separated. depth,mtime,path"),
+            arg!(--"sort-by" <PROPS> "properties to sort by, comma-separated. depth,mtime,path")
+            .value_parser(SortKeys::from_str)
+            // Arg::new("sort-opts")
+            //     .long("sort-by")
+            //     .num_args(1)
+            //     .help("properties to sort by, comma-separated. depth,mtime,path"),
         )
         .arg(
-            Arg::with_name("prefer-within")
-                .long("prefer-within")
-                .takes_value(true)
-                .help("prefer files within this path"),
+            arg!(--"prefer-within" <PATH> "prefer files within this path")
+            .value_parser(value_parser!(PathBuf))
+            // Arg::new("prefer-within")
+            //     .long("prefer-within")
+            //     .takes_value(true)
+            //     .help("prefer files within this path"),
         )
-        .arg(Arg::with_name("directory").required(true).multiple(true))
+        .arg(Arg::new("directory").required(true).num_args(1..).value_parser(value_parser!(PathBuf)))
         .get_matches();
-    let dirs = matches.values_of_os("directory").unwrap();
-    let recurse = matches.is_present("recursive") || matches.is_present("max-depth");
-    let follow_symlinks = matches.is_present("follow");
-    let min_size = if matches.is_present("min-size") {
-        value_t!(matches.value_of("min-size"), u64).unwrap_or_else(|e| e.exit())
-    } else {
-        1
-    };
-    let max_depth = if matches.is_present("max-depth") {
-        Some(value_t!(matches.value_of("max-depth"), u64).unwrap_or_else(|e| e.exit()))
-    } else {
-        None
-    };
-    let prefer_location = if matches.is_present("prefer-within") {
-        let p = value_t!(matches, "prefer-within", PathBuf).unwrap_or_else(|e| e.exit());
+    let dirs: Vec<&PathBuf> = matches.get_many("directory").unwrap().collect();
+    let recurse = matches.get_flag("recursive") || matches.contains_id("max-depth");
+    let follow_symlinks = matches.get_flag("follow");
+    let min_size: u64 = matches.get_one("min-size").copied().unwrap_or(1);
+    let max_depth = matches.get_one::<u64>("max-depth").copied();
+    let prefer_location = if let Some(p) = matches.get_one::<PathBuf>("prefer-within") {
         Some(p.canonicalize().expect("could not canonicalize path"))
     } else {
         None
     };
-    let sort_by = if matches.is_present("sort-opts") {
-        value_t!(matches, "sort-opts", SortKeys).unwrap_or_else(|e| e.exit())
-    } else {
-        SortKeys::default()
-    };
+    let sort_by = matches.get_one::<SortKeys>("sort-opts").cloned().unwrap_or_else(|| SortKeys::default());
     let sort_options = SortOptions {
         prefer_location,
         sort_by,
