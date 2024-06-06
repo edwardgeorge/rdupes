@@ -1,12 +1,8 @@
-use blake2::Blake2b;
-//use clap::{value_t, App, Arg, OsValues};
+use blake3::{Hash, Hasher};
 use clap::{arg, command, value_parser, Arg};
-use digest::Digest;
-use generic_array::{ArrayLength, GenericArray};
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -72,29 +68,20 @@ where
     Ok((seen, files, skipped))
 }
 
-fn hash_path<D, N>(path: &Path) -> io::Result<GenericArray<u8, N>>
-where
-    D: Digest<OutputSize = N> + Write,
-    N: ArrayLength<u8>,
-{
-    let mut file = File::open(path)?;
-    let mut hasher = D::new();
-    io::copy(&mut file, &mut hasher)?;
-    //let x: Vec<u8> = Vec::from(&hasher.finalize()[..]);
+fn hash_path(path: &Path) -> io::Result<Hash> {
+    let mut hasher = Hasher::new();
+    hasher.update_mmap_rayon(path)?;
     Ok(hasher.finalize())
 }
 
-fn find_duplicates<'a, D>(
+fn find_duplicates<'a>(
     paths: &'a [FileInfo],
     hash_count: &mut usize,
-) -> Result<Vec<Vec<&'a FileInfo>>, Error>
-where
-    D: Digest + Write,
-{
+) -> Result<Vec<Vec<&'a FileInfo>>, Error> {
     let mut matches: HashMap<_, Vec<&FileInfo>> = HashMap::new();
     let mut hashes: Vec<_> = paths
         .par_iter()
-        .map(|i| hash_path::<D, _>(i).map(|h| (h, i)))
+        .map(|i| hash_path(i).map(|h| (*h.as_bytes(), i)))
         .collect();
     *hash_count = hashes.len();
     for i in hashes.drain(..) {
@@ -114,9 +101,9 @@ where
 }
 
 fn run<I, J>(dirs: I, options: &Options) -> Result<(), Error>
-    where
-        I: IntoIterator<Item = J>,
-        J: AsRef<Path>,
+where
+    I: IntoIterator<Item = J>,
+    J: AsRef<Path>,
 {
     let num_hashes = Arc::new(AtomicUsize::new(0));
     let num_duplicates = Arc::new(AtomicUsize::new(0));
@@ -153,7 +140,7 @@ fn run<I, J>(dirs: I, options: &Options) -> Result<(), Error>
             return;
         }
         let mut hash_count = 0;
-        let x = find_duplicates::<Blake2b>(&paths, &mut hash_count);
+        let x = find_duplicates(&paths, &mut hash_count);
         num_hashes.fetch_add(hash_count, Ordering::Relaxed);
         match x {
             Err(e) => {
@@ -200,66 +187,44 @@ fn run<I, J>(dirs: I, options: &Options) -> Result<(), Error>
 fn main() {
     let matches = command!()
         .arg(
-            arg!(recursive: -r "recurse into directories")
-            //.action(ArgAction::SetTrue)
-            // Arg::new("recursive")
-            //     .short('r')
-            //     .action(ArgAction::SetTrue)
-            //     .help("recurse into directories"),
+            arg!(recursive: -r "recurse into directories"),
         )
         .arg(
-            arg!(follow: -f --follow "follow symlinks")
-            //.action(ArgAction::SetTrue)
-            // Arg::new("follow")
-            //     .short('f')
-            //     .action(ArgAction::SetTrue)
-            //     .help("follow symlinks"),
+            arg!(follow: -f --follow "follow symlinks"),
         )
         .arg(
             arg!(--"min-size" <BYTES> "minimum size of files (in bytes) to find duplicates for")
-            .value_parser(value_parser!(u64))
-            // Arg::new("min-size")
-            //     .long("min-size")
-            //     .num_args(1)
-            //     .help("minimum size of files (in bytes) to find duplicates for"),
+                .value_parser(value_parser!(u64)),
         )
         .arg(
             arg!(--"max-depth" <DEPTH> "maximum depth to recurse (0 is no recursion). implies -r.")
-            .value_parser(value_parser!(u64))
-            // Arg::new("max-depth")
-            //     .long("max-depth")
-            //     .num_args(1)
-            //     .help("maximum depth to recurse (0 is no recursion). implies -r."),
+                .value_parser(value_parser!(u64)),
         )
         .arg(
             arg!(--"sort-by" <PROPS> "properties to sort by, comma-separated. depth,mtime,path")
-            .value_parser(SortKeys::from_str)
-            // Arg::new("sort-opts")
-            //     .long("sort-by")
-            //     .num_args(1)
-            //     .help("properties to sort by, comma-separated. depth,mtime,path"),
+                .value_parser(SortKeys::from_str),
         )
         .arg(
             arg!(--"prefer-within" <PATH> "prefer files within this path")
-            .value_parser(value_parser!(PathBuf))
-            // Arg::new("prefer-within")
-            //     .long("prefer-within")
-            //     .takes_value(true)
-            //     .help("prefer files within this path"),
+                .value_parser(value_parser!(PathBuf)),
         )
-        .arg(Arg::new("directory").required(true).num_args(1..).value_parser(value_parser!(PathBuf)))
+        .arg(
+            Arg::new("directory")
+                .required(true)
+                .num_args(1..)
+                .value_parser(value_parser!(PathBuf)),
+        )
         .get_matches();
     let dirs: Vec<&PathBuf> = matches.get_many("directory").unwrap().collect();
     let recurse = matches.get_flag("recursive") || matches.contains_id("max-depth");
     let follow_symlinks = matches.get_flag("follow");
     let min_size: u64 = matches.get_one("min-size").copied().unwrap_or(1);
     let max_depth = matches.get_one::<u64>("max-depth").copied();
-    let prefer_location = if let Some(p) = matches.get_one::<PathBuf>("prefer-within") {
-        Some(p.canonicalize().expect("could not canonicalize path"))
-    } else {
-        None
-    };
-    let sort_by = matches.get_one::<SortKeys>("sort-opts").cloned().unwrap_or_else(|| SortKeys::default());
+    let prefer_location = matches.get_one::<PathBuf>("prefer-within").map(|p| p.canonicalize().expect("could not canonicalize path"));
+    let sort_by = matches
+        .get_one::<SortKeys>("sort-opts")
+        .cloned()
+        .unwrap_or_else(SortKeys::default);
     let sort_options = SortOptions {
         prefer_location,
         sort_by,

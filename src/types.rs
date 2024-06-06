@@ -23,7 +23,7 @@ impl std::ops::Deref for FileInfo {
 }
 
 impl fmt::Display for FileInfo {
-    fn fmt<'a>(&self, f: &mut fmt::Formatter<'a>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "{}", &self.path.display())
     }
 }
