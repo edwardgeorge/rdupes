@@ -10,5 +10,5 @@ edition = "2018"
 blake3 = { version = "1.5.3", features = ["mmap", "rayon"] }
 clap = { version = "4.5.9", features = ["cargo"] }
 rayon = "1.10.0"
-thiserror = "1.0.26"
+thiserror = "1.0.62"
 walkdir = "2.5.0"
