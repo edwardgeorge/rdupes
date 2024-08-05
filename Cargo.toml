@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 blake3 = { version = "1.5.3", features = ["mmap", "rayon"] }
-clap = { version = "4.5.11", features = ["cargo"] }
+clap = { version = "4.5.13", features = ["cargo"] }
 rayon = "1.10.0"
 thiserror = "1.0.63"
 walkdir = "2.5.0"
