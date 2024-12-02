@@ -1,11 +1,10 @@
 use blake3::{Hash, Hasher};
-use clap::{arg, command, value_parser, Arg};
+use clap::{arg, ArgAction, Parser, ValueEnum};
 use rayon::prelude::*;
 use std::collections::HashMap;
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::vec::Vec;
@@ -13,16 +12,36 @@ use std::vec::Vec;
 mod sorting;
 mod types;
 
-use sorting::{SortKeys, SortOptions};
+use sorting::SortOptions;
 use types::{Error, FileInfo};
 
-#[derive(Debug, Clone)]
+use ArgAction::SetTrue;
+
+#[derive(Debug, Clone, Default, ValueEnum)]
+enum DeleteOptions {
+    #[default]
+    KeepAll,
+    //DeleteDuplicates,
+    //DryRun,
+    //Prompt,
+}
+
+#[derive(Debug, Clone, Parser)]
 struct Options {
+    #[arg(short = 'r', long, action = SetTrue, default_value_t = false)]
     recurse: bool,
+    #[arg(short = 'f', long = "follow", action = SetTrue, default_value_t = false)]
     follow_symlinks: bool,
+    #[arg(long = "min-size", default_value_t = 0, value_name = "BYTES")]
     min_size: u64,
+    #[arg(long = "max-depth", value_name = "DEPTH")]
     max_depth: Option<u64>,
+    #[clap(flatten)]
     sort_options: SortOptions,
+    #[arg(long = "delete", value_enum, default_value_t)]
+    delete: DeleteOptions,
+    #[arg(value_name = "DIRECTORY", required = true)]
+    paths: Vec<PathBuf>,
 }
 
 fn find_same_sized_files<I>(
@@ -100,11 +119,7 @@ fn find_duplicates<'a>(
     Ok(r)
 }
 
-fn run<I, J>(dirs: I, options: &Options) -> Result<(), Error>
-where
-    I: IntoIterator<Item = J>,
-    J: AsRef<Path>,
-{
+fn run(options: &Options) -> Result<(), Error> {
     let num_hashes = Arc::new(AtomicUsize::new(0));
     let num_duplicates = Arc::new(AtomicUsize::new(0));
     let num_groups = Arc::new(AtomicUsize::new(0));
@@ -119,7 +134,7 @@ where
     let mut seen_counter = 0;
     let mut files_counter = 0;
     let mut skipped_counter = 0;
-    for dir in dirs {
+    for dir in options.paths.iter() {
         let mut iter = walkdir::WalkDir::new(dir);
         if let Some(d) = depth {
             iter = iter.max_depth(d as usize + 1);
@@ -185,61 +200,8 @@ where
 }
 
 fn main() {
-    let matches = command!()
-        .arg(
-            arg!(recursive: -r "recurse into directories"),
-        )
-        .arg(
-            arg!(follow: -f --follow "follow symlinks"),
-        )
-        .arg(
-            arg!(--"min-size" <BYTES> "minimum size of files (in bytes) to find duplicates for")
-                .value_parser(value_parser!(u64)),
-        )
-        .arg(
-            arg!(--"max-depth" <DEPTH> "maximum depth to recurse (0 is no recursion). implies -r.")
-                .value_parser(value_parser!(u64)),
-        )
-        .arg(
-            arg!(--"sort-by" <PROPS> "properties to sort by, comma-separated. depth,mtime,path")
-                .value_parser(SortKeys::from_str),
-        )
-        .arg(
-            arg!(--"prefer-within" <PATH> "prefer files within this path")
-                .value_parser(value_parser!(PathBuf)),
-        )
-        .arg(
-            Arg::new("directory")
-                .required(true)
-                .num_args(1..)
-                .value_parser(value_parser!(PathBuf)),
-        )
-        .get_matches();
-    let dirs: Vec<&PathBuf> = matches.get_many("directory").unwrap().collect();
-    let recurse = matches.get_flag("recursive") || matches.contains_id("max-depth");
-    let follow_symlinks = matches.get_flag("follow");
-    let min_size: u64 = matches.get_one("min-size").copied().unwrap_or(1);
-    let max_depth = matches.get_one::<u64>("max-depth").copied();
-    let prefer_location = matches.get_one::<PathBuf>("prefer-within").map(|p| p.canonicalize().expect("could not canonicalize path"));
-    let sort_by = matches
-        .get_one::<SortKeys>("sort-opts")
-        .cloned()
-        .unwrap_or_else(SortKeys::default);
-    let sort_options = SortOptions {
-        prefer_location,
-        sort_by,
-    };
-    let result = run(
-        dirs,
-        &Options {
-            recurse,
-            follow_symlinks,
-            min_size,
-            max_depth,
-            sort_options,
-        },
-    );
-    if let Err(e) = result {
+    let opts = Options::parse();
+    if let Err(e) = run(&opts) {
         eprintln!("{}", e);
         std::process::exit(1);
     }

@@ -1,6 +1,8 @@
 use crate::types::{Error, FileInfo};
+use clap::Parser;
 use std::cmp::Ordering;
 use std::collections::HashSet;
+use std::fmt::Display;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
 
@@ -45,6 +47,20 @@ impl std::str::FromStr for SortBy {
     }
 }
 
+impl Display for SortBy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                SortBy::Depth => "depth",
+                SortBy::ModificationTime => "mtime",
+                SortBy::PathParts => "path",
+            }
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SortKeys {
     keys: Vec<SortBy>,
@@ -84,6 +100,20 @@ impl std::str::FromStr for SortKeys {
     }
 }
 
+impl Display for SortKeys {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.keys
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    }
+}
+
 impl SortKeys {
     #[inline]
     pub fn cmp_for_fileinfos(&self, left: &FileInfo, right: &FileInfo) -> Ordering {
@@ -97,9 +127,11 @@ impl SortKeys {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Parser)]
 pub struct SortOptions {
+    #[arg(long = "prefer-within", value_name = "PATH")]
     pub prefer_location: Option<PathBuf>,
+    #[arg(long = "sort-by", value_name = "PROPS", default_value_t)]
     pub sort_by: SortKeys,
 }
 
